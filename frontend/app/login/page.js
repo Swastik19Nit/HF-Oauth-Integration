@@ -1,12 +1,26 @@
-"use client"
-import { useEffect } from 'react';
+"use client";
+import { useState, useEffect } from "react";
 
-const Login = () => {
+export default function HomePage() {
+  const [repositories, setRepositories] = useState([]);
+  
   useEffect(() => {
-    window.location.href = `${process.env.NEXT_PUBLIC_API_URL}/auth/login`;
+    const token = localStorage.getItem("token");
+    fetch("/api/v1/repositories", {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+      .then((res) => res.json())
+      .then((data) => setRepositories(data));
   }, []);
-
-  return <p>Redirecting to Hugging Face for authentication...</p>;
-};
-
-export default Login;
+  
+  return (
+    <div>
+      <h1>Repositories</h1>
+      <ul>
+        {repositories.map((repo) => (
+          <li key={repo.id}>{repo.name}</li>
+        ))}
+      </ul>
+    </div>
+  );
+}

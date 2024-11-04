@@ -1,15 +1,13 @@
-# backend/main.py
+# backend/app/main.py
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from prisma import Prisma
 from contextlib import asynccontextmanager
-
-from api.v1.endpoints import auth, repositories
-
-prisma = Prisma()
+from app.api.v1.endpoints import repositories
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    prisma = Prisma()
     await prisma.connect()
     yield
     await prisma.disconnect()
@@ -24,5 +22,4 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-app.include_router(auth.router, prefix="/api/v1/auth")
 app.include_router(repositories.router, prefix="/api/v1/repositories")

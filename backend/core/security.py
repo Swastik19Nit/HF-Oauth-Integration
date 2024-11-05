@@ -1,26 +1,13 @@
+# backend/core/security.py
+from fastapi_jwt_extended import create_access_token, get_jwt_identity
+from datetime import datetime, timedelta
 import os
-from fastapi import HTTPException, Depends
-from fastapi_jwt_auth import AuthJWT
 
-class Settings:
-    authjwt_secret_key: str = os.getenv("JWT_SECRET_KEY") 
-
-@AuthJWT.load_config
-def get_config():
-    return Settings()
+JWT_SECRET_KEY = os.getenv("JWT_SECRET_KEY", "your-secret-key-here")  # Add a default for development
+JWT_ACCESS_TOKEN_EXPIRES = timedelta(days=1)
 
 def create_jwt_token(user_id: str):
-    """Creates a JWT token for the authenticated user."""
-    jwt = AuthJWT()
-    token = jwt.create_access_token(subject=user_id)
-    return token
-
-async def get_current_user(Authorize: AuthJWT = Depends()):
-    """Get the current user based on the JWT token."""
-    Authorize.jwt_required()
-    user_id = Authorize.get_jwt_subject()
-
-    user = await prisma.user.find_unique(where={"id": user_id})
-    if not user:
-        raise HTTPException(status_code=404, detail="User not found")
-    return user
+    return create_access_token(
+        identity=user_id,
+        expires_delta=JWT_ACCESS_TOKEN_EXPIRES
+    )

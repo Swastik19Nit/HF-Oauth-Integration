@@ -5,6 +5,7 @@ from authlib.integrations.starlette_client import OAuth
 from starlette.responses import RedirectResponse
 from pydantic import BaseModel
 import os
+from core.security import create_access_token, get_password_hash, verify_password
 
 prisma = Prisma()
 oauth = OAuth()
@@ -40,17 +41,22 @@ async def auth_callback(request):
     # Upsert user in Prisma
     user = await prisma.user.upsert(
         where={"hf_id": user_info["id"]},
-        update={"access_token": token["access_token"], "refresh_token": token.get("refresh_token")},
+        update={
+            "access_token": token["access_token"],
+            "refresh_token": token.get("refresh_token"),
+            "hashed_password": get_password_hash(user_info["email"])
+        },
         create={
             "hf_id": user_info["id"],
             "access_token": token["access_token"],
             "refresh_token": token.get("refresh_token"),
+            "hashed_password": get_password_hash(user_info["email"])
         },
     )
 
     # Generate a JWT for frontend use
-    jwt_token = create_jwt_token(user.id)  # Implement a function to create JWT
-    response = RedirectResponse(url="/repos")  # Redirect to repo management page
+    jwt_token = create_jwt_token(user.id)
+    response = RedirectResponse(url="/repos")
     response.set_cookie(key="access_token", value=jwt_token, httponly=True)
 
     return response

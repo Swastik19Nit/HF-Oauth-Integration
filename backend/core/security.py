@@ -1,23 +1,19 @@
-# backend/core/security.py
-
 from datetime import datetime, timedelta, timezone
-import jwt
-from fastapi import Depends, HTTPException, status
+import jwt  # type: ignore
+from fastapi import Depends, HTTPException, status, Request
 from fastapi.security import OAuth2PasswordBearer
 from jwt.exceptions import InvalidTokenError
 from prisma.models import User as PrismaUser
 from passlib.context import CryptContext
-from prisma import Prisma
+from main import Prisma
 import os
-from dotenv import load_dotenv
-
+from dotenv import load_dotenv # type: ignore
 
 load_dotenv()
 
 SECRET_KEY = os.getenv("SECRET_KEY")
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 30
-
 
 prisma = Prisma()
 
@@ -46,6 +42,20 @@ def create_access_token(user_id: str, expires_delta: timedelta = None) -> str:
     }
     
     return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
+
+def verify_jwt_token(token: str) -> dict:
+    """Verify the JWT token and return the payload if valid."""
+    try:
+        
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        print(f"Decoded token payload: {payload}") 
+        return payload 
+    except InvalidTokenError as e:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail=f"Invalid token: {str(e)}",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
 
 async def get_current_user(token: str = Depends(oauth2_scheme)) -> PrismaUser:
     """Get current user from JWT token."""
@@ -81,13 +91,33 @@ async def get_current_user(token: str = Depends(oauth2_scheme)) -> PrismaUser:
         )
     return user
 
-async def get_current_active_user(
-    current_user: PrismaUser = Depends(get_current_user)
-) -> PrismaUser:
-    """Get current active user."""
-    if getattr(current_user, 'disabled', False): 
-        raise HTTPException(status_code=400, detail="Inactive user")
-    return current_user
+async def get_current_active_user(request: Request):
+    print(request)
+    
+    token = request.cookies.get("access_token")
+    if not token:
+        auth_header = request.headers.get("Authorization")
+        print(auth_header , "Nicki")
+        if auth_header and auth_header.startswith("Bearer "):
+            token = auth_header.split(" ")[1]
+
+    if not token:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+
+    try:
+        payload = verify_jwt_token(token)  # Use verify_jwt_token to decode and verify the JWT
+        user_id = payload.get("sub")
+        if not user_id:
+            raise HTTPException(status_code=401, detail="Invalid token: User ID missing")
+        
+        user = await prisma.user.find_unique(where={"id": user_id})
+        if not user:
+            raise HTTPException(status_code=401, detail="User not found")
+
+    except Exception as e:
+        raise HTTPException(status_code=401, detail=f"Invalid or expired token: {str(e)}")
+    
+    return user
 
 def get_jwt_identity(token: str = Depends(oauth2_scheme)) -> str:
     """Extract user ID from JWT token."""

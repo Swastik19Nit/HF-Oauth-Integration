@@ -2,11 +2,12 @@ from fastapi import APIRouter, HTTPException
 from starlette.requests import Request
 from starlette.responses import RedirectResponse
 from starlette.config import Config
-from authlib.integrations.starlette_client import OAuth
+from authlib.integrations.starlette_client import OAuth # type: ignore
 from prisma import Prisma
 import os
 import base64
 import json
+from main import Prisma
 from datetime import datetime, timedelta
 from core.security import create_access_token, get_password_hash
 
@@ -36,28 +37,31 @@ async def login_via_huggingface(request: Request):
 async def auth_via_huggingface(request: Request):
     """Handle the Hugging Face OAuth callback."""
     try:
-        # Get the token from the OAuth callback
+        if not prisma.is_connected():
+            await prisma.connect()
+            print("Connected to Hugging Face")
+
+        
         token = await oauth.huggingface.authorize_access_token(request)
         print("Token received:", token)
 
-        # Decode the JWT token
         token_parts = token['access_token'].split('.')
         if len(token_parts) != 3:
             raise HTTPException(
                 status_code=400,
                 detail="Invalid access token format"
             )
-            
+
         def add_padding(b64str):
             padding = 4 - (len(b64str) % 4)
             return b64str + ("=" * padding)
-            
+
         payload = token_parts[1]
         payload = add_padding(payload.replace('-', '+').replace('_', '/'))
-        
+
         decoded_payload = json.loads(base64.b64decode(payload))
         print("Decoded payload:", decoded_payload)
-        
+
         hf_user_id = str(decoded_payload.get('sub'))
         if not hf_user_id:
             raise HTTPException(
@@ -72,7 +76,7 @@ async def auth_via_huggingface(request: Request):
         )
 
         if existing_user:
-            
+           
             user = await prisma.user.update(
                 where={"id": existing_user.id},
                 data={
@@ -82,7 +86,7 @@ async def auth_via_huggingface(request: Request):
                 }
             )
         else:
-            # Create new user
+           
             user = await prisma.user.create(
                 data={
                     "hf_id": hf_user_id,
@@ -94,20 +98,30 @@ async def auth_via_huggingface(request: Request):
                 }
             )
 
-        # Create JWT token with longer expiration for session
+       
         jwt_token = create_access_token(
             user.id,
             expires_delta=timedelta(days=7)  # Longer session token
         )
-        
-        response = RedirectResponse(url="/repos")
+
+       
+        response = RedirectResponse(url="http://localhost:3000/repositories")
         response.set_cookie(
             key="access_token",
             value=jwt_token,
             httponly=True,
             secure=True,
             samesite='lax',
-            max_age=7 * 24 * 3600  # 7 days in seconds
+            max_age=7 * 24 * 3600 
+        )
+
+        response.set_cookie(
+            key="logged_in",
+            value="true",
+            httponly=False,
+            secure=True,
+            samesite='lax',
+            max_age=7 * 24 * 3600
         )
 
         return response
@@ -116,7 +130,7 @@ async def auth_via_huggingface(request: Request):
         print(f"Error during authentication: {str(e)}")
         import traceback
         traceback.print_exc()
-        
+
         raise HTTPException(
             status_code=400,
             detail=f"Authentication failed: {str(e)}"

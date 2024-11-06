@@ -5,6 +5,8 @@ from contextlib import asynccontextmanager
 from api.v1.endpoints import repositories
 from starlette.middleware.sessions import SessionMiddleware
 from api.v1.auth import router as auth_router
+from api.v1.endpoints.repositories import router as repository_router
+
 import os
 
 prisma = Prisma()
@@ -34,10 +36,10 @@ app.add_middleware(
 )
 
 
-from api.v1.endpoints.repositories import router as repository_router
+
 app.include_router(
     repository_router,
-    prefix="/api/v1/repositories",
+    prefix="/api/v1/endpoints/repositories",
     tags=["repositories"]
 )
 

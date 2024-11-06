@@ -35,7 +35,7 @@ async def login_via_huggingface(request: Request):
 
 @router.get("/callback")
 async def auth_via_huggingface(request: Request):
-    """Handle the Hugging Face OAuth callback."""
+
     try:
         if not prisma.is_connected():
             await prisma.connect()
@@ -43,7 +43,8 @@ async def auth_via_huggingface(request: Request):
 
         
         token = await oauth.huggingface.authorize_access_token(request)
-        print("Token received:", token)
+        
+        
 
         token_parts = token['access_token'].split('.')
         if len(token_parts) != 3:
@@ -60,7 +61,6 @@ async def auth_via_huggingface(request: Request):
         payload = add_padding(payload.replace('-', '+').replace('_', '/'))
 
         decoded_payload = json.loads(base64.b64decode(payload))
-        print("Decoded payload:", decoded_payload)
 
         hf_user_id = str(decoded_payload.get('sub'))
         if not hf_user_id:

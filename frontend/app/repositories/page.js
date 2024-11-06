@@ -10,9 +10,11 @@ const Repositories = () => {
     useEffect(() => {
         const fetchRepos = async () => {
             const baseUrl = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000';
-            const endpoint = `${baseUrl}/api/v1/repositories`;
+            const endpoint = `${baseUrl}/api/v1/endpoints/repositories/get`;
 
             console.log('Attempting to fetch from:', endpoint);
+            const token = localStorage.getItem('token'); 
+            console.log(token);
 
             try {
                 setLoading(true);
@@ -20,10 +22,11 @@ const Repositories = () => {
                     withCredentials: true,
                     headers: {
                         'Content-Type': 'application/json',
+                        
                     }
                 });
 
-                console.log('Response received:', response.data);
+                console.log('Response received:', response,"Hi");
                 setRepos(response.data);
                 setError(null);
             } catch (err) {

@@ -19,7 +19,7 @@ async def lifespan(app: FastAPI):
     
     await prisma.disconnect()
 
-app = FastAPI(lifespan=lifespan)
+app = FastAPI(lifespan=lifespan , debug=False)
 
 app.add_middleware(
     SessionMiddleware,

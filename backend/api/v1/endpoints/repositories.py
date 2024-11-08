@@ -1,45 +1,71 @@
 from fastapi import APIRouter, Depends, HTTPException, Request
-from prisma.models import Repository
+from authlib.integrations.starlette_client import OAuth
 from core.security import get_current_active_user
-from typing import List
-from main import Prisma
-
+import os
+import logging
 
 router = APIRouter()
-prisma = Prisma()
+oauth = OAuth()
 
+# Register OAuth client for Hugging Face
+oauth.register(
+    name='huggingface',
+    client_id=os.getenv('HF_CLIENT_ID'),
+    client_secret=os.getenv('HF_CLIENT_SECRET'),
+    authorize_url='https://huggingface.co/oauth/authorize',
+    access_token_url='https://huggingface.co/oauth/token',
+    api_base_url='https://huggingface.co/api',
+    client_kwargs={'scope': 'profile read-repos write-repos manage-repos'}
+)
 
-@router.get("/get")  
-async def list_repositories(request: Request, current_user: dict = Depends(get_current_active_user)):
-    """List all repositories for the current user."""
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+@router.get("/get")
+async def list_repositories(request: Request, current_user = Depends(get_current_active_user)):
+    """List all repositories for the current user from Hugging Face."""
     try:
-        if not prisma.is_connected():
-            await prisma.connect()
-            
-        repositories = await prisma.repository.find_many(
-            where={"userId": current_user.id}
+        
+        access_token = current_user.access_token
+        if not access_token:
+            raise HTTPException(status_code=401, detail="User not authenticated with Hugging Face")
+
+       
+        response = await oauth.huggingface.get(
+            '/repos',  # Hugging Face endpoint for user repositories
+            token={'access_token': access_token}
         )
-        print(f"Found repositories: {repositories}")  
+
+        if response.status_code != 200:
+            raise HTTPException(
+                status_code=response.status_code,
+                detail=f"Failed to fetch repositories from Hugging Face: {response.text}"
+            )
+
+        # Parse and return the repositories
+        repositories = response.json()
+        logger.info(f"Repositories retrieved from Hugging Face: {repositories}")
         return repositories
+
     except Exception as e:
-        print(f"Error in list_repositories: {str(e)}") 
+        logger.error(f"Error fetching repositories from Hugging Face: {str(e)}")
         raise HTTPException(
             status_code=500,
-            detail=f"Failed to fetch repositories: {str(e)}"
+            detail=f"Error fetching repositories from Hugging Face: {str(e)}"
         )
 
 @router.post("/create")
 async def create_repository(
-    name: str, 
-    description: str = None, 
-    private: bool = False, 
+    name: str,
+    description: str = None,
+    private: bool = False,
     current_user: dict = Depends(get_current_active_user)
 ):
-    """Create a repository."""
+    """Create a repository in your local database."""
     try:
         if not prisma.is_connected():
             await prisma.connect()
-            
+
         repository = await prisma.repository.create(
             data={
                 "name": name,

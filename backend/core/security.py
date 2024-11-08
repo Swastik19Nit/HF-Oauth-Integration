@@ -49,7 +49,6 @@ def verify_jwt_token(token: str) -> dict:
     try:
         
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-        print(f"Decoded token payload: {payload}") 
         return payload 
     except InvalidTokenError as e:
         raise HTTPException(
@@ -100,12 +99,12 @@ async def get_current_active_user(request: Request):
     if cookie_header:
         cookies = cookie_header.split("; ")
         for cookie in cookies:
-            if cookie.startswith("access_token="):
+            if cookie.startswith("actwt="):
                 token = cookie.split("=", 1)[1].strip("b'")  # Parse token
                 break
 
     if not token:
-        # Check authorization header if cookie is missing
+        
         auth_header = request.headers.get("Authorization")
         if auth_header and auth_header.startswith("Bearer "):
             token = auth_header.split(" ")[1]

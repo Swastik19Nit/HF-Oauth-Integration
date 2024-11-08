@@ -8,6 +8,8 @@ import os
 import base64
 import json
 from main import Prisma
+from pprint import pformat
+import logging
 from datetime import datetime, timedelta
 from core.security import create_access_token, get_password_hash
 
@@ -16,6 +18,8 @@ config = Config('.env')
 oauth = OAuth(config)
 
 router = APIRouter()
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 oauth.register(
     name='huggingface',
@@ -26,6 +30,60 @@ oauth.register(
     api_base_url='https://huggingface.co/api',
     client_kwargs={'scope': 'profile read-repos write-repos manage-repos'}
 )
+
+async def log_request_details(request: Request):
+    """
+    Comprehensive logging of request object details, especially useful for OAuth callbacks
+    """
+    try:
+        # Create a dictionary to store all request information
+        request_info = {
+            "base_info": {
+                "method": request.method,
+                "url": str(request.url),
+                "base_url": str(request.base_url),
+                "path": request.url.path,
+            },
+            "query_params": dict(request.query_params),
+            "path_params": dict(request.path_params),
+            "headers": dict(request.headers),
+            "cookies": dict(request.cookies),
+            "client": {
+                "host": request.client.host if request.client else None,
+                "port": request.client.port if request.client else None
+            }
+        }
+
+       
+        state = request.query_params.get('state')
+        code = request.query_params.get('code')
+        if state or code:
+            request_info["oauth_specific"] = {
+                "state": state,
+                "code": code
+            }
+
+        # Try to get body content if any
+        try:
+            body = await request.body()
+            if body:
+                request_info["body"] = body.decode()
+                try:
+                    request_info["body_json"] = await request.json()
+                except:
+                    pass
+        except:
+            request_info["body"] = "Could not read body"
+
+        # Log the formatted information
+        logger.info("=== OAuth Callback Request Details ===")
+        logger.info(f"Full request info:\n{pformat(request_info)}")
+        
+        return request_info
+
+    except Exception as e:
+        logger.error(f"Error logging request details: {str(e)}")
+        raise
 
 @router.get("/login")
 async def login_via_huggingface(request: Request):
@@ -41,11 +99,13 @@ async def auth_via_huggingface(request: Request):
             await prisma.connect()
             print("Connected to Hugging Face")
 
-        
+        await log_request_details(request)
         token = await oauth.huggingface.authorize_access_token(request)
-        
-        
 
+        logger.info("=== OAuth Token Info ===")
+        logger.info(f"Token type: {type(token)}")
+        logger.info(f"Token keys: {token.keys()}")
+        
         token_parts = token['access_token'].split('.')
         if len(token_parts) != 3:
             raise HTTPException(
@@ -91,7 +151,7 @@ async def auth_via_huggingface(request: Request):
                 data={
                     "hf_id": hf_user_id,
                     "access_token": token["access_token"],
-                    "refresh_token": token.get("refresh_token"),
+                    "refresh_token": token.get("refresh_token"), #algorithm 
                     "hashed_password": get_password_hash(hf_user_id),
                     "created_at": datetime.utcnow(),
                     "last_login": datetime.utcnow()
@@ -103,27 +163,16 @@ async def auth_via_huggingface(request: Request):
             user.id,
             expires_delta=timedelta(days=7)  # Longer session token
         )
-
        
         response = RedirectResponse(url="http://localhost:3000/repositories")
         response.set_cookie(
-            key="access_token",
+            key="actwt",
             value=jwt_token,
             httponly=True,
             secure=True,
             samesite='lax',
             max_age=7 * 24 * 3600 
         )
-
-        response.set_cookie(
-            key="logged_in",
-            value="true",
-            httponly=False,
-            secure=True,
-            samesite='lax',
-            max_age=7 * 24 * 3600
-        )
-
         return response
 
     except Exception as e:

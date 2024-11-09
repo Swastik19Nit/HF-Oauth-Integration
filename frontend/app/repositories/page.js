@@ -6,49 +6,71 @@ const Repositories = () => {
     const [repos, setRepos] = useState([]);
     const [error, setError] = useState(null);
     const [loading, setLoading] = useState(true);
+    const [deleteLoading, setDeleteLoading] = useState(null);
 
-    useEffect(() => {
-        const fetchRepos = async () => {
-            const baseUrl = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000';
-            const endpoint = `${baseUrl}/api/v1/endpoints/repositories/get`;
+    const baseUrl = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8000';
 
-            console.log('Attempting to fetch from:', endpoint);
-            const token = localStorage.getItem('token'); 
-            console.log(token);
+    const fetchRepos = async () => {
+        const endpoint = `${baseUrl}/api/v1/endpoints/repositories/get`;
+        
+        try {
+            setLoading(true);
+            const response = await axios.get(endpoint, {
+                withCredentials: true,
+                headers: {
+                    'Content-Type': 'application/json',
+                }
+            });
 
-            try {
-                setLoading(true);
-                const response = await axios.get(endpoint, {
+            setRepos(response.data);
+            setError(null);
+        } catch (err) {
+            console.error('Error fetching repositories:', err);
+            if (err.response?.status === 404) {
+                setError("API endpoint not found. Please check the server configuration.");
+            } else if (err.response?.status === 401) {
+                setError("Please log in to view your repositories");
+            } else {
+                setError(`Failed to fetch repositories: ${err.message}`);
+            }
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const handleDelete = async (name, organization) => {
+        if (!window.confirm(`Are you sure you want to delete repository ${name}?`)) {
+            return;
+        }
+
+        setDeleteLoading(name);
+        try {
+            await axios.delete(
+                `${baseUrl}/api/v1/endpoints/repositories/delete`,
+                {
+                    data: {
+                        type: "model",
+                        name: name,
+                        organization: organization
+                    },
                     withCredentials: true,
                     headers: {
                         'Content-Type': 'application/json',
-                        
                     }
-                });
-
-                console.log('Response received:', response,"Hi");
-                setRepos(response.data);
-                setError(null);
-            } catch (err) {
-                console.error('Detailed error:', {
-                    message: err.message,
-                    response: err.response,
-                    status: err.response?.status,
-                    data: err.response?.data
-                });
-
-                if (err.response?.status === 404) {
-                    setError("API endpoint not found. Please check the server configuration.");
-                } else if (err.response?.status === 401) {
-                    setError("Please log in to view your repositories");
-                } else {
-                    setError(`Failed to fetch repositories: ${err.message}`);
                 }
-            } finally {
-                setLoading(false);
-            }
-        };
+            );
 
+            // Refresh the repositories list
+            await fetchRepos();
+        } catch (err) {
+            console.error('Error deleting repository:', err);
+            setError(`Failed to delete repository: ${err.response?.data?.detail || err.message}`);
+        } finally {
+            setDeleteLoading(null);
+        }
+    };
+
+    useEffect(() => {
         fetchRepos();
     }, []);
 
@@ -79,12 +101,25 @@ const Repositories = () => {
                     {repos.map((repo) => (
                         <li
                             key={repo.id}
-                            className="p-4 border border-gray-200 rounded-lg hover:bg-gray-50"
+                            className="p-4 border border-gray-200 rounded-lg hover:bg-gray-50 flex justify-between items-center"
                         >
-                            <div className="font-medium">{repo.name}</div>
-                            {repo.description && (
-                                <div className="text-sm text-gray-500">{repo.description}</div>
-                            )}
+                            <div>
+                                <div className="font-medium">{repo.id}</div>
+                                {repo.description && (
+                                    <div className="text-sm text-gray-500">{repo.description}</div>
+                                )}
+                            </div>
+                            <button
+                                onClick={() => handleDelete(repo.id, repo.organization)}
+                                disabled={deleteLoading === repo.id}
+                                className={`px-4 py-2 rounded-md text-white text-sm
+                                    ${deleteLoading === repo.id
+                                        ? 'bg-gray-400'
+                                        : 'bg-red-600 hover:bg-red-700'
+                                    }`}
+                            >
+                                {deleteLoading === repo.id ? 'Deleting...' : 'Delete'}
+                            </button>
                         </li>
                     ))}
                 </ul>

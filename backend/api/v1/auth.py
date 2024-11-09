@@ -10,6 +10,7 @@ import json
 from main import Prisma
 from pprint import pformat
 import logging
+import requests
 from datetime import datetime, timedelta
 from core.security import create_access_token, get_password_hash
 
@@ -36,7 +37,6 @@ async def log_request_details(request: Request):
     Comprehensive logging of request object details, especially useful for OAuth callbacks
     """
     try:
-        # Create a dictionary to store all request information
         request_info = {
             "base_info": {
                 "method": request.method,
@@ -87,6 +87,7 @@ async def log_request_details(request: Request):
 
 @router.get("/login")
 async def login_via_huggingface(request: Request):
+    await log_request_details(request)
     """Initiate the Hugging Face OAuth login process."""
     redirect_uri = request.url_for('auth_via_huggingface')
     return await oauth.huggingface.authorize_redirect(request, redirect_uri)
@@ -101,10 +102,6 @@ async def auth_via_huggingface(request: Request):
 
         await log_request_details(request)
         token = await oauth.huggingface.authorize_access_token(request)
-
-        logger.info("=== OAuth Token Info ===")
-        logger.info(f"Token type: {type(token)}")
-        logger.info(f"Token keys: {token.keys()}")
         
         token_parts = token['access_token'].split('.')
         if len(token_parts) != 3:
@@ -130,6 +127,15 @@ async def auth_via_huggingface(request: Request):
             )
 
         print(f"Decoded user ID: {hf_user_id}")
+          
+        
+        response = requests.get(
+            "https://huggingface.co/api/whoami-v2",
+            params={},
+            headers={"Authorization":f"Bearer {token['access_token']}"}
+        )
+        print(response.json()["name"])  #username:Swastik19
+
 
         existing_user = await prisma.user.find_unique(
             where={"hf_id": hf_user_id}
